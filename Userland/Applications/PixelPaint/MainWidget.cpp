@@ -64,11 +64,11 @@ MainWidget::MainWidget()
     };
 
     m_tab_widget->on_tab_close_click = [&](auto& widget) {
-        if (request_close_editor()) {
-            auto& image_editor = verify_cast<PixelPaint::ImageEditor>(widget);
+        auto& image_editor = verify_cast<PixelPaint::ImageEditor>(widget);
+        if (image_editor.request_close()) {
             m_tab_widget->deferred_invoke([&] {
                 m_tab_widget->remove_tab(image_editor);
-                if (m_tab_widget->children().size() == 1) {
+                if (m_tab_widget->children().size() == 0) {
                     m_layer_list_widget->set_image(nullptr);
                     m_layer_properties_widget->set_layer(nullptr);
                 }
@@ -133,38 +133,13 @@ void MainWidget::initialize_menubar(GUI::Window& window)
     });
 
     m_save_image_as_action = GUI::CommonActions::make_save_as_action([&](auto&) {
-        auto* editor = current_image_editor();
-        if (!editor)
-            return;
-        auto save_result = FileSystemAccessClient::Client::the().save_file(window.window_id(), "untitled", "pp");
-        if (save_result.error != 0)
-            return;
-        auto result = editor->save_project_to_fd_and_close(*save_result.fd);
-        if (result.is_error()) {
-            GUI::MessageBox::show_error(&window, String::formatted("Could not save {}: {}", *save_result.chosen_file, result.error()));
-            return;
-        }
-        editor->set_path(*save_result.chosen_file);
-        editor->undo_stack().set_current_unmodified();
+        if (auto* editor = current_image_editor())
+            editor->save_project_as();
     });
 
     m_save_image_action = GUI::CommonActions::make_save_action([&](auto&) {
-        auto* editor = current_image_editor();
-        if (!editor)
-            return;
-        if (editor->path().is_empty()) {
-            m_save_image_as_action->activate();
-            return;
-        }
-        auto response = FileSystemAccessClient::Client::the().request_file(window.window_id(), editor->path(), Core::OpenMode::Truncate | Core::OpenMode::WriteOnly);
-        if (response.error != 0)
-            return;
-        auto result = editor->save_project_to_fd_and_close(*response.fd);
-        if (result.is_error()) {
-            GUI::MessageBox::show_error(&window, String::formatted("Could not save {}: {}", *response.chosen_file, result.error()));
-            return;
-        }
-        editor->undo_stack().set_current_unmodified();
+        if (auto* editor = current_image_editor())
+            editor->save_project();
     });
 
     file_menu.add_action(*m_new_image_action);
@@ -753,32 +728,12 @@ void MainWidget::create_image_from_clipboard()
     m_layer_list_widget->set_selected_layer(layer);
 }
 
-bool MainWidget::request_close_editor()
-{
-    auto* editor = current_image_editor();
-    VERIFY(editor);
-
-    if (!editor->undo_stack().is_current_modified()) {
-        return true;
-    }
-
-    auto result = GUI::MessageBox::ask_about_unsaved_changes(window(), editor->path(), editor->undo_stack().last_unmodified_timestamp());
-
-    if (result == GUI::MessageBox::ExecYes) {
-        m_save_image_action->activate();
-        return true;
-    }
-
-    if (result == GUI::MessageBox::ExecNo)
-        return true;
-
-    return false;
-}
-
 bool MainWidget::request_close()
 {
     while (!m_tab_widget->children().is_empty()) {
-        if (!request_close_editor())
+        auto* editor = current_image_editor();
+        VERIFY(editor);
+        if (!editor->request_close())
             return false;
         m_tab_widget->remove_tab(*m_tab_widget->active_widget());
     }

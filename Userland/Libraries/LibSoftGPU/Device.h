@@ -14,6 +14,7 @@
 #include <LibGfx/Matrix4x4.h>
 #include <LibGfx/Rect.h>
 #include <LibGfx/Vector4.h>
+#include <LibSoftGPU/AlphaBlendFactors.h>
 #include <LibSoftGPU/Clipper.h>
 #include <LibSoftGPU/Config.h>
 #include <LibSoftGPU/DepthBuffer.h>
@@ -67,6 +68,8 @@ struct RasterizerOptions {
     Array<TexCoordGenerationConfig, 4> texcoord_generation_config {};
 };
 
+struct PixelQuad;
+
 class Device final {
 public:
     Device(const Gfx::IntSize& min_size);
@@ -90,8 +93,12 @@ public:
     void set_sampler_config(unsigned, SamplerConfig const&);
 
 private:
-    void submit_triangle(Triangle const& triangle, Vector<size_t> const& enabled_texture_units);
     void draw_statistics_overlay(Gfx::Bitmap&);
+
+    void rasterize_triangle(const Triangle& triangle);
+    void setup_blend_factors();
+    void shade_fragments(PixelQuad&);
+    bool test_alpha(PixelQuad&);
 
 private:
     RefPtr<Gfx::Bitmap> m_render_target;
@@ -102,6 +109,8 @@ private:
     Vector<Triangle> m_processed_triangles;
     Vector<Vertex> m_clipped_vertices;
     Array<Sampler, NUM_SAMPLERS> m_samplers;
+    Vector<size_t> m_enabled_texture_units;
+    AlphaBlendFactors m_alpha_blend_factors;
 };
 
 }
